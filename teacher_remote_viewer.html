@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>COEDX Remote Viewer</title>
+  <style>
+    :root {
+      --bg: #101215;
+      --panel: #181d23;
+      --panel-2: #202730;
+      --line: #313a45;
+      --text: #eef4f8;
+      --muted: #9aa8b7;
+      --green: #34d399;
+      --blue: #38bdf8;
+      --amber: #f59e0b;
+      --red: #f87171;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Microsoft JhengHei", "Segoe UI", Arial, sans-serif;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: minmax(520px, 1fr) 360px;
+      min-height: 100vh;
+    }
+
+    .stage {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+      border-right: 1px solid var(--line);
+    }
+
+    .topbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      padding: 12px;
+      border-bottom: 1px solid var(--line);
+      background: #13171c;
+    }
+
+    .brand {
+      font-weight: 800;
+      letter-spacing: 0;
+      margin-right: 6px;
+      white-space: nowrap;
+    }
+
+    input {
+      flex: 1 1 360px;
+      min-width: 220px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0d1013;
+      color: var(--text);
+      padding: 0 10px;
+      font-size: 14px;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--blue);
+    }
+
+    button {
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      padding: 0 12px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button.primary {
+      border-color: rgba(52, 211, 153, 0.55);
+      background: #123126;
+      color: #c8f7df;
+    }
+
+    button.warn {
+      border-color: rgba(248, 113, 113, 0.5);
+      background: #321719;
+      color: #ffd7d7;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.55;
+    }
+
+    .video-wrap {
+      position: relative;
+      min-height: 320px;
+      background: #050607;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+    }
+
+    #liveImage {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+
+    .empty {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.7;
+    }
+
+    .empty.hidden {
+      display: none;
+    }
+
+    .status-strip {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--line);
+      background: #13171c;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      background: var(--panel);
+      white-space: nowrap;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+    }
+
+    .dot.online {
+      background: var(--green);
+    }
+
+    .dot.offline {
+      background: var(--red);
+    }
+
+    aside {
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      padding: 12px;
+      background: #11161b;
+      min-width: 0;
+    }
+
+    .section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      padding: 12px;
+    }
+
+    .section h2 {
+      margin: 0 0 10px;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #12171d;
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .metric .value {
+      font-size: 26px;
+      line-height: 1.1;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    .wide {
+      grid-column: span 2;
+    }
+
+    .log {
+      height: 140px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #0d1013;
+      color: var(--muted);
+      padding: 8px;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .mode-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .stage {
+        border-right: 0;
+      }
+
+      aside {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      aside {
+        grid-template-columns: 1fr;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .wide {
+        grid-column: span 1;
+      }
+
+      .topbar {
+        align-items: stretch;
+      }
+
+      button {
+        flex: 1 1 auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section class="stage">
+      <div class="topbar">
+        <div class="brand">COEDX Remote Viewer</div>
+        <input id="wsUrl" placeholder="貼上 tunnel 網址，例如 https://xxxx.trycloudflare.com">
+        <button id="connectBtn" class="primary">連線</button>
+        <button id="disconnectBtn" class="warn" disabled>斷線</button>
+        <button id="fullscreenBtn">全螢幕</button>
+      </div>
+
+      <div class="video-wrap" id="videoWrap">
+        <img id="liveImage" alt="即時辨識畫面">
+        <div class="empty" id="emptyState">
+          <div>
+            <strong>尚未連線</strong><br>
+            請先在辨識電腦啟動主程式與 tunnel，然後把公開網址貼到上方。
+          </div>
+        </div>
+      </div>
+
+      <div class="status-strip">
+        <span class="pill"><span class="dot offline" id="dot"></span><span id="statusText">離線</span></span>
+        <span class="pill">模式 <strong id="modeText">-</strong></span>
+        <span class="pill">FPS <strong id="fpsText">0.0</strong></span>
+        <span class="pill">延遲 <strong id="lagText">-</strong></span>
+        <span class="pill">時間 <strong id="timeText">-</strong></span>
+      </div>
+    </section>
+
+    <aside>
+      <section class="section">
+        <h2>即時統計</h2>
+        <div class="grid">
+          <div class="metric">
+            <div class="label">目前畫面</div>
+            <div class="value" id="currentCount">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">總計</div>
+            <div class="value" id="totalCount">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">已分配</div>
+            <div class="value" id="assignedCount">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">待判定</div>
+            <div class="value" id="pendingCount">0</div>
+          </div>
+          <div class="metric wide">
+            <div class="label">警示</div>
+            <div class="value" id="alertText" style="font-size: 18px;">-</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>方向統計</h2>
+        <div class="grid">
+          <div class="metric">
+            <div class="label">Dorm</div>
+            <div class="value" id="dormCount">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Star Gate</div>
+            <div class="value" id="starCount">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">Sports</div>
+            <div class="value" id="sportsCount">0</div>
+          </div>
+          <div class="metric">
+            <div class="label">亮度</div>
+            <div class="value" id="brightnessText">-</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>模式切換</h2>
+        <div class="mode-row">
+          <button id="peopleBtn">人流</button>
+          <button id="vehicleBtn">車流</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>連線紀錄</h2>
+        <div class="log" id="logBox"></div>
+      </section>
+    </aside>
+  </main>
+
+  <script>
+    const wsInput = document.getElementById("wsUrl");
+    const connectBtn = document.getElementById("connectBtn");
+    const disconnectBtn = document.getElementById("disconnectBtn");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+    const peopleBtn = document.getElementById("peopleBtn");
+    const vehicleBtn = document.getElementById("vehicleBtn");
+    const liveImage = document.getElementById("liveImage");
+    const emptyState = document.getElementById("emptyState");
+    const videoWrap = document.getElementById("videoWrap");
+    const dot = document.getElementById("dot");
+    const statusText = document.getElementById("statusText");
+    const logBox = document.getElementById("logBox");
+
+    const fields = {
+      modeText: document.getElementById("modeText"),
+      fpsText: document.getElementById("fpsText"),
+      lagText: document.getElementById("lagText"),
+      timeText: document.getElementById("timeText"),
+      currentCount: document.getElementById("currentCount"),
+      totalCount: document.getElementById("totalCount"),
+      assignedCount: document.getElementById("assignedCount"),
+      pendingCount: document.getElementById("pendingCount"),
+      alertText: document.getElementById("alertText"),
+      dormCount: document.getElementById("dormCount"),
+      starCount: document.getElementById("starCount"),
+      sportsCount: document.getElementById("sportsCount"),
+      brightnessText: document.getElementById("brightnessText"),
+    };
+
+    let ws = null;
+    let frameTimes = [];
+    let objectUrl = null;
+
+    wsInput.value = localStorage.getItem("coedxRemoteWsUrl") || "";
+
+    function log(message) {
+      const line = `[${new Date().toLocaleTimeString()}] ${message}`;
+      logBox.textContent = `${line}\n${logBox.textContent}`.slice(0, 3000);
+    }
+
+    function normalizeWsUrl(raw) {
+      let value = String(raw || "").trim();
+      if (!value) return "";
+      if (value.startsWith("https://")) return `wss://${value.slice(8).replace(/\/$/, "")}`;
+      if (value.startsWith("http://")) return `ws://${value.slice(7).replace(/\/$/, "")}`;
+      if (value.startsWith("wss://") || value.startsWith("ws://")) return value.replace(/\/$/, "");
+      return `wss://${value.replace(/\/$/, "")}`;
+    }
+
+    function setOnline(online, text) {
+      dot.className = `dot ${online ? "online" : "offline"}`;
+      statusText.textContent = text;
+      connectBtn.disabled = online;
+      disconnectBtn.disabled = !online;
+    }
+
+    function setNumber(id, value) {
+      fields[id].textContent = Number(value ?? 0).toLocaleString("zh-TW");
+    }
+
+    function updateFps() {
+      const now = performance.now();
+      frameTimes.push(now);
+      frameTimes = frameTimes.filter((time) => now - time <= 3000);
+      const fps = frameTimes.length > 1 ? (frameTimes.length - 1) / ((frameTimes[frameTimes.length - 1] - frameTimes[0]) / 1000) : 0;
+      fields.fpsText.textContent = fps.toFixed(1);
+    }
+
+    function showFrame(b64) {
+      const byteCharacters = atob(b64);
+      const bytes = new Uint8Array(byteCharacters.length);
+      for (let i = 0; i < byteCharacters.length; i += 1) {
+        bytes[i] = byteCharacters.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: "image/jpeg" });
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      objectUrl = URL.createObjectURL(blob);
+      liveImage.src = objectUrl;
+      liveImage.style.display = "block";
+      emptyState.classList.add("hidden");
+    }
+
+    function updatePayload(data) {
+      if (data.type === "history") return;
+      if (data.image) {
+        showFrame(data.image);
+        updateFps();
+      }
+      fields.modeText.textContent = data.analysis_mode || "-";
+      fields.timeText.textContent = data.time || "-";
+      setNumber("currentCount", data.current_count);
+      setNumber("totalCount", data.total_count);
+      setNumber("assignedCount", data.assigned_destination_count);
+      setNumber("pendingCount", data.pending_destination_count);
+      setNumber("dormCount", data.to_dorm_count);
+      setNumber("starCount", data.to_starbucks_count);
+      setNumber("sportsCount", data.to_sports_count);
+      fields.alertText.textContent = data.alert || "-";
+      fields.alertText.style.color = data.alert_active ? "var(--red)" : "var(--green)";
+      fields.brightnessText.textContent = data.brightness ?? "-";
+      if (data.ts_ms) {
+        fields.lagText.textContent = `${Math.max(0, Date.now() - Number(data.ts_ms))} ms`;
+      }
+    }
+
+    function connect() {
+      const url = normalizeWsUrl(wsInput.value);
+      if (!url) {
+        log("請先輸入 tunnel 網址。");
+        return;
+      }
+      localStorage.setItem("coedxRemoteWsUrl", url);
+      wsInput.value = url;
+      if (ws) ws.close();
+      log(`連線到 ${url}`);
+      setOnline(false, "連線中");
+      ws = new WebSocket(url);
+      ws.onopen = () => {
+        setOnline(true, "已連線");
+        log("WebSocket 已連線。");
+      };
+      ws.onmessage = (event) => {
+        try {
+          updatePayload(JSON.parse(event.data));
+        } catch (error) {
+          log(`資料解析失敗：${error.message}`);
+        }
+      };
+      ws.onerror = () => {
+        log("WebSocket 發生錯誤。");
+      };
+      ws.onclose = () => {
+        setOnline(false, "離線");
+        log("WebSocket 已斷線。");
+      };
+    }
+
+    function disconnect() {
+      if (ws) ws.close();
+      ws = null;
+    }
+
+    function sendMode(mode) {
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        log("尚未連線，不能切換模式。");
+        return;
+      }
+      ws.send(JSON.stringify({ type: "set_mode", mode }));
+      log(`切換模式：${mode}`);
+    }
+
+    connectBtn.addEventListener("click", connect);
+    disconnectBtn.addEventListener("click", disconnect);
+    peopleBtn.addEventListener("click", () => sendMode("people"));
+    vehicleBtn.addEventListener("click", () => sendMode("vehicles"));
+    fullscreenBtn.addEventListener("click", () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        videoWrap.requestFullscreen();
+      }
+    });
+    wsInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") connect();
+    });
+
+    log("等待連線。");
+  </script>
+</body>
+</html>

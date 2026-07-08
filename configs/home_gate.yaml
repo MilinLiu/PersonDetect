@@ -1,0 +1,143 @@
+camera:
+  scan_base_ip: 192.168.0.
+  scan_port: 554
+  rtsp_url: ''
+  rtsp_username: YOUR_RTSP_USERNAME
+  rtsp_password: YOUR_RTSP_PASSWORD
+  rtsp_path: stream2
+server:
+  host: 0.0.0.0
+  port: 8765
+video:
+  inference_fps: 10
+  output_width: 854
+  output_height: 480
+  jpeg_quality: 60
+  night_brightness_threshold: 85
+  night_mode_hysteresis: 10
+capture:
+  reconnect_delay: 3.0
+  fail_threshold: 25
+  rtsp_open_timeout_ms: 5000
+  rtsp_read_timeout_ms: 5000
+  rtsp_stale_frame_sec: 8.0
+  rtsp_restart_cooldown_sec: 4.0
+  inference_no_frame_restart_sec: 8.0
+  capture_buffer_size: 1
+model:
+  weights: yolo26s.pt
+  imgsz: 960
+  conf: 0.32
+tracking:
+  reid_thresh: 0.82
+  reid_expire_sec: 60
+  track_max_missing_sec: 14.0
+  box_hold_sec: 0.0
+  box_hold_min_hits: 2
+  track_id_ttl_sec: 36.0
+  match_iou_thresh: 0.18
+  match_distance_ratio: 0.16
+  destination_min_travel_ratio: 0.09
+  destination_min_track_sec: 0.8
+  destination_missing_infer_sec: 2.0
+  destination_history_size: 36
+counting:
+  total_count_on: roi_entry
+  allow_missing_destination_infer: false
+  count_event_overlay_sec: 1.2
+  visible_exit_min_points: 4
+  visible_exit_min_track_sec: 0.45
+  visible_exit_min_travel_ratio: 0.04
+  visible_exit_min_delta: 0.02
+  dorm_visible_exit_x: 0.46
+  dorm_strict_exit_x: 0.38
+  starbucks_visible_exit_x: 0.56
+  sports_visible_exit_y: 0.58
+  visible_exit_zones:
+    dorm:
+      x_max: 0.5
+      y_min: 0.34
+      y_max: 0.98
+      dx_max: -0.006
+      dominant_axis: x
+      axis_ratio: 0.2
+    starbucks:
+      x_min: 0.5
+      y_min: 0.34
+      y_max: 0.98
+      dx_min: 0.006
+      dominant_axis: x
+      axis_ratio: 0.2
+    sports:
+      x_min: 0.12
+      x_max: 0.82
+      y_max: 0.64
+      dy_max: -0.006
+      dominant_axis: y
+      axis_ratio: 0.2
+alert:
+  current_count_threshold: 6
+zones:
+  road_roi:
+  - - 0.02
+    - 0.98
+  - - 0.19
+    - 0.36
+  - - 0.72
+    - 0.36
+  - - 0.98
+    - 0.98
+  forward_walkway_zones:
+  - - 0.0
+    - 0.36
+    - 0.24
+    - 0.84
+  - - 0.58
+    - 0.38
+    - 0.99
+    - 0.84
+  exits:
+    dorm:
+    - - 0.02
+      - 0.98
+    - - 0.19
+      - 0.36
+    sports:
+    - - 0.19
+      - 0.36
+    - - 0.72
+      - 0.36
+    starbucks:
+    - - 0.72
+      - 0.36
+    - - 0.98
+      - 0.98
+  road_roi_margin_ratio: 0.05
+destinations:
+  labels:
+    dorm: Dorm
+    sports: Sports
+    starbucks: Star Gate
+  colors:
+    dorm:
+    - 45
+    - 212
+    - 191
+    sports:
+    - 245
+    - 158
+    - 11
+    starbucks:
+    - 56
+    - 189
+    - 248
+display:
+  show_road_roi: false
+  show_direction_guides: true
+  show_person_labels: false
+  show_count_debug: false
+logging:
+  interval_minutes: 5
+  history_dashboard_points: 96
+  history_max_points: 2016
+  traffic_log_dir: traffic_logs

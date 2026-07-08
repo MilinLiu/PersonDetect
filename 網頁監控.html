@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>校園智慧辨識監控</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg: #111316;
+            --panel: #1a1f25;
+            --panel-soft: #222932;
+            --line: #333c48;
+            --text: #edf2f7;
+            --muted: #9ba8b6;
+            --cyan: #2dd4bf;
+            --blue: #38bdf8;
+            --amber: #f59e0b;
+            --red: #ef4444;
+            --green: #22c55e;
+            --violet: #a78bfa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            padding: 18px;
+        }
+
+        .layout-container {
+            display: grid;
+            grid-template-columns: minmax(560px, 1.65fr) minmax(380px, 0.95fr);
+            gap: 18px;
+            max-width: 1680px;
+            margin: 0 auto;
+        }
+
+        .video-col,
+        .data-col {
+            min-width: 0;
+        }
+
+        .data-col {
+            display: grid;
+            gap: 14px;
+            align-content: start;
+        }
+
+        #video-wrapper {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: #050608;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        #live-image {
+            width: 100%;
+            height: 100%;
+            display: block;
+            object-fit: contain;
+        }
+
+        #overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(5, 6, 8, 0.76);
+            color: var(--muted);
+            font-size: 1rem;
+            text-align: center;
+            padding: 24px;
+            transition: opacity 0.25s ease;
+        }
+
+        #overlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #lag-indicator {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            min-width: 88px;
+            text-align: center;
+            font-size: 0.78rem;
+            background: rgba(5, 6, 8, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            padding: 5px 10px;
+            border-radius: 999px;
+            color: var(--green);
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 14px;
+        }
+
+        .top-panel {
+            display: grid;
+            gap: 12px;
+        }
+
+        .panel-title {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            min-width: 0;
+        }
+
+        h1 {
+            font-size: 1.18rem;
+            font-weight: 700;
+            line-height: 1.35;
+            letter-spacing: 0;
+        }
+
+        h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+
+        .status-row,
+        .meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        #status {
+            color: var(--amber);
+            font-weight: 700;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            min-height: 28px;
+            padding: 4px 10px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: var(--panel-soft);
+            color: var(--text);
+            font-size: 0.82rem;
+            white-space: nowrap;
+        }
+
+        body[data-light-mode="night"] .light-badge {
+            border-color: rgba(45, 212, 191, 0.52);
+            color: var(--cyan);
+        }
+
+        body[data-light-mode="day"] .light-badge {
+            border-color: rgba(245, 158, 11, 0.56);
+            color: var(--amber);
+        }
+
+        .mode-switcher {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+
+        .mode-option {
+            min-height: 42px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #11161c;
+            color: var(--muted);
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+            transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease;
+        }
+
+        .mode-option.active {
+            background: rgba(45, 212, 191, 0.12);
+            border-color: rgba(45, 212, 191, 0.72);
+            color: var(--cyan);
+        }
+
+        .stat-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .stat-card {
+            min-height: 96px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 13px;
+            display: grid;
+            align-content: space-between;
+        }
+
+        .stat-label {
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .stat-value {
+            color: var(--cyan);
+            font-size: clamp(1.8rem, 4vw, 2.6rem);
+            font-weight: 800;
+            line-height: 1;
+            letter-spacing: 0;
+        }
+
+        .stat-value.text-value {
+            font-size: clamp(1.25rem, 2.2vw, 1.8rem);
+            line-height: 1.14;
+            word-break: keep-all;
+        }
+
+        .info-strip {
+            display: grid;
+            grid-template-columns: repeat(7, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .info-cell {
+            min-height: 68px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+
+        .info-cell span {
+            display: block;
+            color: var(--muted);
+            font-size: 0.8rem;
+            margin-bottom: 8px;
+        }
+
+        .info-cell strong {
+            font-size: 1.14rem;
+            color: var(--text);
+        }
+
+        .flow-visual-panel {
+            display: grid;
+            gap: 12px;
+        }
+
+        .flow-visual-panel.hidden-panel {
+            display: none;
+        }
+
+        .flow-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .flow-map-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .flow-route[data-flow-route="dorm"] {
+            order: 1;
+        }
+
+        .flow-route[data-flow-route="sports"] {
+            order: 2;
+        }
+
+        .flow-route[data-flow-route="starbucks"] {
+            order: 3;
+        }
+
+        .flow-route {
+            min-height: 154px;
+            display: grid;
+            grid-template-rows: 52px 1fr auto;
+            gap: 8px;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #11161c;
+            position: relative;
+            overflow: hidden;
+            transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+        }
+
+        .flow-route::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            background: linear-gradient(135deg, rgba(45, 212, 191, 0.22), transparent 68%);
+            transition: opacity 0.18s ease;
+        }
+
+        .flow-route.dominant {
+            border-color: rgba(45, 212, 191, 0.72);
+            background: rgba(45, 212, 191, 0.09);
+        }
+
+        .flow-route.flash {
+            transform: translateY(-2px);
+            border-color: rgba(245, 158, 11, 0.82);
+        }
+
+        .flow-route.flash::before {
+            opacity: 1;
+        }
+
+        .flow-arrow {
+            position: relative;
+            align-self: center;
+            justify-self: center;
+            width: 72px;
+            height: 52px;
+            transform-origin: center center;
+        }
+
+        .flow-arrow::before {
+            content: "";
+            position: absolute;
+            left: 10px;
+            right: 10px;
+            top: 24px;
+            height: 4px;
+            border-radius: 999px;
+            background: var(--cyan);
+            box-shadow: 0 0 18px rgba(45, 212, 191, 0.32);
+        }
+
+        .flow-arrow::after {
+            content: "";
+            position: absolute;
+            right: 10px;
+            top: 16px;
+            width: 18px;
+            height: 18px;
+            border-top: 4px solid var(--cyan);
+            border-right: 4px solid var(--cyan);
+            transform: rotate(45deg);
+            border-radius: 2px;
+        }
+
+        .flow-arrow.dorm {
+            transform: rotate(180deg);
+        }
+
+        .flow-arrow.starbucks {
+            transform: rotate(0deg);
+        }
+
+        .flow-arrow.sports {
+            transform: rotate(-90deg);
+        }
+
+        .flow-route-body {
+            position: relative;
+            display: grid;
+            gap: 3px;
+            align-content: end;
+        }
+
+        .flow-route-label {
+            color: var(--muted);
+            font-size: 0.86rem;
+        }
+
+        .flow-route-count {
+            color: var(--cyan);
+            font-size: clamp(1.9rem, 4vw, 2.7rem);
+            line-height: 1;
+            font-weight: 800;
+            letter-spacing: 0;
+        }
+
+        .flow-route-delta {
+            color: var(--amber);
+            font-size: 0.82rem;
+            font-weight: 700;
+        }
+
+        .flow-meter {
+            position: relative;
+            height: 8px;
+            background: rgba(10, 14, 19, 0.86);
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .flow-meter span {
+            display: block;
+            width: 0;
+            height: 100%;
+            border-radius: 999px;
+            background: var(--cyan);
+            transition: width 0.2s ease;
+        }
+
+        .distribution-panel {
+            display: grid;
+            gap: 12px;
+        }
+
+        .distribution-row {
+            display: grid;
+            grid-template-columns: 86px 1fr 44px;
+            gap: 10px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .bar-track {
+            height: 10px;
+            background: #11161c;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+
+        .bar-fill {
+            display: block;
+            width: 0;
+            height: 100%;
+            background: var(--cyan);
+            transition: width 0.2s ease;
+        }
+
+        #bar-secondary {
+            background: var(--blue);
+        }
+
+        #bar-third {
+            background: var(--amber);
+        }
+
+        #bar-fourth {
+            background: var(--red);
+        }
+
+        .control-row {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .threshold-control {
+            display: grid;
+            grid-template-columns: auto 92px;
+            gap: 10px;
+            align-items: center;
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        #threshold-input {
+            width: 92px;
+            height: 36px;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            background: #0f1216;
+            color: var(--text);
+            padding: 0 10px;
+            font-size: 1rem;
+        }
+
+        #alert-display {
+            min-height: 38px;
+            display: flex;
+            align-items: center;
+            padding: 8px 10px;
+            border-radius: 8px;
+            background: rgba(34, 197, 94, 0.1);
+            color: var(--green);
+            border: 1px solid rgba(34, 197, 94, 0.25);
+            font-weight: 700;
+        }
+
+        #alert-display.active {
+            background: rgba(239, 68, 68, 0.12);
+            color: var(--red);
+            border-color: rgba(239, 68, 68, 0.35);
+        }
+
+        .chart-container {
+            height: 260px;
+            margin-top: 12px;
+        }
+
+        .chart-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+        }
+
+        .range-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        .range-btn,
+        .chart-action-btn {
+            min-height: 34px;
+            border: 1px solid var(--line);
+            border-radius: 7px;
+            background: #11161c;
+            color: var(--muted);
+            font: inherit;
+            font-size: 0.84rem;
+            font-weight: 700;
+            padding: 0 10px;
+            cursor: pointer;
+        }
+
+        .range-btn.active,
+        .chart-action-btn {
+            border-color: rgba(45, 212, 191, 0.62);
+            color: var(--cyan);
+            background: rgba(45, 212, 191, 0.11);
+        }
+
+        .chart-modal {
+            position: fixed;
+            inset: 0;
+            z-index: 30;
+            display: none;
+            background: rgba(5, 8, 13, 0.82);
+            padding: 24px;
+        }
+
+        .chart-modal.open {
+            display: grid;
+            place-items: center;
+        }
+
+        .chart-modal-panel {
+            width: min(1180px, 96vw);
+            height: min(720px, 88vh);
+            display: grid;
+            grid-template-rows: auto 1fr;
+            gap: 12px;
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 14px;
+        }
+
+        .chart-modal-head {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .modal-chart-container {
+            min-height: 0;
+        }
+
+        #fullChart {
+            width: 100%;
+            height: 100%;
+        }
+
+        .chart-fallback {
+            height: 260px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            color: var(--muted);
+            border: 1px dashed var(--line);
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+
+        .export-btn {
+            width: 100%;
+            height: 38px;
+            margin-top: 12px;
+            border: 1px solid rgba(45, 212, 191, 0.54);
+            border-radius: 8px;
+            background: rgba(45, 212, 191, 0.12);
+            color: var(--cyan);
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        @media (max-width: 1180px) {
+            .layout-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 760px) {
+            body {
+                padding: 10px;
+            }
+
+            .stat-grid,
+            .info-strip,
+            .flow-map-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .control-row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body data-light-mode="day">
+<main class="layout-container">
+    <section class="video-col">
+        <div id="video-wrapper">
+            <img id="live-image" alt="即時辨識影像">
+            <div id="overlay">正在連線到辨識後端...</div>
+            <div id="lag-indicator">即時</div>
+        </div>
+    </section>
+
+    <section class="data-col">
+        <section class="panel top-panel">
+            <div class="panel-title">
+                <h1>校園智慧辨識監控</h1>
+                <span class="badge" id="analysis-mode-display">人流模式</span>
+            </div>
+            <div class="mode-switcher" id="mode-switcher">
+                <button class="mode-option" type="button" data-mode="people">校園人流</button>
+                <button class="mode-option" type="button" data-mode="vehicles">街口車流</button>
+            </div>
+            <div class="status-row">
+                <span>連線狀態</span>
+                <span id="status">等待連線...</span>
+            </div>
+            <div class="meta-row">
+                <span class="badge light-badge" id="light-display">日間</span>
+                <span class="badge" id="brightness-display">亮度 --</span>
+                <span class="badge" id="dominant-display">主要 --</span>
+                <span class="badge" id="detail-display">時間 --</span>
+            </div>
+        </section>
+
+        <section class="stat-grid">
+            <div class="stat-card">
+                <span class="stat-label" id="current-label">目前人數</span>
+                <strong id="current-count" class="stat-value">0</strong>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label" id="peak-label">尖峰人數</span>
+                <strong id="peak-count" class="stat-value">0</strong>
+            </div>
+            <div class="stat-card">
+                <span class="stat-label" id="dominant-label">主要去向</span>
+                <strong id="top-category" class="stat-value text-value">未判定</strong>
+            </div>
+        </section>
+
+        <section class="info-strip">
+            <div class="info-cell"><span id="total-label">總人流</span><strong id="total-count">0</strong></div>
+            <div class="info-cell"><span id="primary-label">往宿舍</span><strong id="primary-count">0</strong></div>
+            <div class="info-cell"><span id="secondary-label">往星巴門</span><strong id="secondary-count">0</strong></div>
+            <div class="info-cell"><span id="third-label">往體育門</span><strong id="third-count">0</strong></div>
+            <div class="info-cell"><span id="fourth-label">待判定</span><strong id="fourth-count">0</strong></div>
+            <div class="info-cell"><span id="interval-label">時段新增</span><strong id="interval-count">0</strong></div>
+            <div class="info-cell"><span>FPS</span><strong id="fps-display">--</strong></div>
+        </section>
+
+        <section class="panel flow-visual-panel" id="people-flow-panel">
+            <div class="flow-head">
+                <h2>人流方向即時標示</h2>
+                <span class="badge" id="flow-pulse-label">等待方向判定</span>
+            </div>
+            <div class="flow-map-grid">
+                <article class="flow-route" data-flow-route="dorm">
+                    <div class="flow-arrow dorm" aria-hidden="true"></div>
+                    <div class="flow-route-body">
+                        <span class="flow-route-label">往宿舍</span>
+                        <strong class="flow-route-count" id="flow-dorm-total">0</strong>
+                        <span class="flow-route-delta" id="flow-dorm-interval">本時段 +0</span>
+                    </div>
+                    <div class="flow-meter"><span id="flow-dorm-meter"></span></div>
+                </article>
+                <article class="flow-route" data-flow-route="starbucks">
+                    <div class="flow-arrow starbucks" aria-hidden="true"></div>
+                    <div class="flow-route-body">
+                        <span class="flow-route-label">往星巴門</span>
+                        <strong class="flow-route-count" id="flow-starbucks-total">0</strong>
+                        <span class="flow-route-delta" id="flow-starbucks-interval">本時段 +0</span>
+                    </div>
+                    <div class="flow-meter"><span id="flow-starbucks-meter"></span></div>
+                </article>
+                <article class="flow-route" data-flow-route="sports">
+                    <div class="flow-arrow sports" aria-hidden="true"></div>
+                    <div class="flow-route-body">
+                        <span class="flow-route-label">往體育門</span>
+                        <strong class="flow-route-count" id="flow-sports-total">0</strong>
+                        <span class="flow-route-delta" id="flow-sports-interval">本時段 +0</span>
+                    </div>
+                    <div class="flow-meter"><span id="flow-sports-meter"></span></div>
+                </article>
+            </div>
+        </section>
+
+        <section class="panel distribution-panel">
+            <h2 id="distribution-title">目的地比例</h2>
+            <div class="distribution-row">
+                <span id="bar-primary-label">往宿舍</span>
+                <div class="bar-track"><span class="bar-fill" id="bar-primary"></span></div>
+                <strong id="share-primary">0%</strong>
+            </div>
+            <div class="distribution-row">
+                <span id="bar-secondary-label">往星巴門</span>
+                <div class="bar-track"><span class="bar-fill" id="bar-secondary"></span></div>
+                <strong id="share-secondary">0%</strong>
+            </div>
+            <div class="distribution-row">
+                <span id="bar-third-label">往體育門</span>
+                <div class="bar-track"><span class="bar-fill" id="bar-third"></span></div>
+                <strong id="share-third">0%</strong>
+            </div>
+            <div class="distribution-row" id="fourth-row">
+                <span id="bar-fourth-label">待判定</span>
+                <div class="bar-track"><span class="bar-fill" id="bar-fourth"></span></div>
+                <strong id="share-fourth">0%</strong>
+            </div>
+        </section>
+
+        <section class="panel">
+            <div class="control-row">
+                <div id="alert-display">系統待命中</div>
+                <label class="threshold-control">
+                    <span id="threshold-label">警報閾值</span>
+                    <input id="threshold-input" type="number" min="1" step="1" value="6">
+                </label>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2 id="chart-title">時段統計</h2>
+            <div class="chart-toolbar">
+                <div class="range-group" id="chart-range-group">
+                    <button class="range-btn" type="button" data-range="1h">1小時</button>
+                    <button class="range-btn" type="button" data-range="4h">4小時</button>
+                    <button class="range-btn" type="button" data-range="8h">8小時</button>
+                    <button class="range-btn" type="button" data-range="24h">24小時</button>
+                    <button class="range-btn" type="button" data-range="all">全部</button>
+                </div>
+                <button class="chart-action-btn" type="button" id="open-full-chart">完整圖表</button>
+            </div>
+            <div class="chart-container" id="chart-container">
+                <canvas id="trafficChart"></canvas>
+            </div>
+            <div class="chart-fallback" id="chart-fallback">圖表載入中</div>
+            <button class="export-btn" type="button" id="export-btn">匯出 CSV</button>
+        </section>
+    </section>
+</main>
+
+<div class="chart-modal" id="chart-modal" aria-hidden="true">
+    <section class="chart-modal-panel">
+        <div class="chart-modal-head">
+            <h2 id="full-chart-title">完整時段統計</h2>
+            <div class="range-group" id="full-chart-range-group">
+                <button class="range-btn" type="button" data-range="1h">1小時</button>
+                <button class="range-btn" type="button" data-range="4h">4小時</button>
+                <button class="range-btn" type="button" data-range="8h">8小時</button>
+                <button class="range-btn" type="button" data-range="24h">24小時</button>
+                <button class="range-btn" type="button" data-range="all">全部</button>
+                <button class="chart-action-btn" type="button" id="close-full-chart">關閉</button>
+            </div>
+        </div>
+        <div class="modal-chart-container">
+            <canvas id="fullChart"></canvas>
+        </div>
+    </section>
+</div>
+
+<script>
+const WS_URL = "ws://localhost:8765";
+const MODE_CONFIG = {
+    people: {
+        title: "人流模式",
+        currentLabel: "目前人數",
+        peakLabel: "尖峰人數",
+        dominantLabel: "主要去向",
+        totalLabel: "總人流",
+        primaryLabel: "往宿舍",
+        secondaryLabel: "往星巴門",
+        thirdLabel: "往體育門",
+        fourthLabel: "待判定",
+        distributionTitle: "目的地比例",
+        chartTitle: "人流時段統計",
+        thresholdStorage: "peopleAlertThreshold",
+        thresholdUnit: "人",
+        healthyText: "人流辨識中",
+        labels: ["往宿舍", "往星巴門", "往體育門", "目前人數"],
+        colors: ["rgba(45, 212, 191, 0.82)", "rgba(56, 189, 248, 0.78)", "rgba(245, 158, 11, 0.78)", "#38bdf8"]
+    },
+    vehicles: {
+        title: "車流模式",
+        currentLabel: "目前車輛",
+        peakLabel: "尖峰車輛",
+        dominantLabel: "主要車種",
+        totalLabel: "總車流",
+        primaryLabel: "汽車",
+        secondaryLabel: "機車",
+        thirdLabel: "巴士",
+        fourthLabel: "貨車",
+        distributionTitle: "車種比例",
+        chartTitle: "車流時段統計",
+        thresholdStorage: "vehicleAlertThreshold",
+        thresholdUnit: "台",
+        healthyText: "車流辨識中",
+        labels: ["汽車", "機車", "巴士", "目前車輛"],
+        colors: ["rgba(56, 189, 248, 0.78)", "rgba(45, 212, 191, 0.82)", "rgba(245, 158, 11, 0.78)", "#38bdf8"]
+    }
+};
+
+const img = document.getElementById("live-image");
+const overlay = document.getElementById("overlay");
+const statusEl = document.getElementById("status");
+const lightEl = document.getElementById("light-display");
+const analysisModeEl = document.getElementById("analysis-mode-display");
+const currentEl = document.getElementById("current-count");
+const peakEl = document.getElementById("peak-count");
+const topCategoryEl = document.getElementById("top-category");
+const intervalEl = document.getElementById("interval-count");
+const totalEl = document.getElementById("total-count");
+const primaryEl = document.getElementById("primary-count");
+const secondaryEl = document.getElementById("secondary-count");
+const thirdEl = document.getElementById("third-count");
+const fourthEl = document.getElementById("fourth-count");
+const barPrimary = document.getElementById("bar-primary");
+const barSecondary = document.getElementById("bar-secondary");
+const barThird = document.getElementById("bar-third");
+const barFourth = document.getElementById("bar-fourth");
+const sharePrimary = document.getElementById("share-primary");
+const shareSecondary = document.getElementById("share-secondary");
+const shareThird = document.getElementById("share-third");
+const shareFourth = document.getElementById("share-fourth");
+const alertEl = document.getElementById("alert-display");
+const detailEl = document.getElementById("detail-display");
+const fpsEl = document.getElementById("fps-display");
+const lagEl = document.getElementById("lag-indicator");
+const brightnessEl = document.getElementById("brightness-display");
+const dominantEl = document.getElementById("dominant-display");
+const thresholdInput = document.getElementById("threshold-input");
+const exportBtn = document.getElementById("export-btn");
+const chartContainer = document.getElementById("chart-container");
+const chartFallback = document.getElementById("chart-fallback");
+const openFullChartBtn = document.getElementById("open-full-chart");
+const closeFullChartBtn = document.getElementById("close-full-chart");
+const chartModal = document.getElementById("chart-modal");
+const fullChartTitle = document.getElementById("full-chart-title");
+const peopleFlowPanel = document.getElementById("people-flow-panel");
+const flowPulseEl = document.getElementById("flow-pulse-label");
+const flowCards = {
+    dorm: {
+        card: document.querySelector('[data-flow-route="dorm"]'),
+        total: document.getElementById("flow-dorm-total"),
+        interval: document.getElementById("flow-dorm-interval"),
+        meter: document.getElementById("flow-dorm-meter")
+    },
+    starbucks: {
+        card: document.querySelector('[data-flow-route="starbucks"]'),
+        total: document.getElementById("flow-starbucks-total"),
+        interval: document.getElementById("flow-starbucks-interval"),
+        meter: document.getElementById("flow-starbucks-meter")
+    },
+    sports: {
+        card: document.querySelector('[data-flow-route="sports"]'),
+        total: document.getElementById("flow-sports-total"),
+        interval: document.getElementById("flow-sports-interval"),
+        meter: document.getElementById("flow-sports-meter")
+    }
+};
+
+const labelIds = {
+    currentLabel: "current-label",
+    peakLabel: "peak-label",
+    dominantLabel: "dominant-label",
+    totalLabel: "total-label",
+    primaryLabel: "primary-label",
+    secondaryLabel: "secondary-label",
+    thirdLabel: "third-label",
+    fourthLabel: "fourth-label",
+    distributionTitle: "distribution-title",
+    chartTitle: "chart-title",
+    thresholdLabel: "threshold-label",
+    barPrimaryLabel: "bar-primary-label",
+    barSecondaryLabel: "bar-secondary-label",
+    barThirdLabel: "bar-third-label",
+    barFourthLabel: "bar-fourth-label"
+};
+
+let selectedMode = localStorage.getItem("analysisMode") || "people";
+if (!MODE_CONFIG[selectedMode]) selectedMode = "people";
+let ws = null;
+let currentHistory = [];
+let historySignature = "";
+let latestData = null;
+let pendingBlob = null;
+let currentBlobUrl = null;
+let rafId = null;
+let lastFrameTime = 0;
+let frameCount = 0;
+let trafficChart = null;
+let fullChart = null;
+let chartRange = localStorage.getItem("chartRange") || "8h";
+let fullChartRange = localStorage.getItem("fullChartRange") || "all";
+let flowLastTotals = { dorm: null, starbucks: null, sports: null };
+const historyStore = { people: [], vehicles: [] };
+const RANGE_POINTS = { "1h": 12, "4h": 48, "8h": 96, "24h": 288 };
+const MAX_CLIENT_HISTORY = 2500;
+
+function createChart(canvasId = "trafficChart") {
+    if (!window.Chart) {
+        chartContainer.style.display = "none";
+        chartFallback.style.display = "flex";
+        chartFallback.textContent = "圖表套件尚未載入";
+        return null;
+    }
+
+    const ctx = document.getElementById(canvasId).getContext("2d");
+    return new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: [],
+            datasets: [
+                { label: "", data: [], backgroundColor: "", borderRadius: 4 },
+                { label: "", data: [], backgroundColor: "", borderRadius: 4 },
+                { label: "", data: [], backgroundColor: "", borderRadius: 4 },
+                {
+                    label: "",
+                    data: [],
+                    type: "line",
+                    borderColor: "#38bdf8",
+                    backgroundColor: "rgba(56, 189, 248, 0.16)",
+                    tension: 0.25,
+                    pointRadius: 2
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    stacked: true,
+                    grid: { color: "rgba(154, 167, 181, 0.16)" },
+                    ticks: { color: "#9aa7b5", precision: 0 }
+                },
+                x: {
+                    stacked: true,
+                    grid: { display: false },
+                    ticks: { color: "#9aa7b5" }
+                }
+            },
+            plugins: {
+                legend: { labels: { color: "#eef2f6" } }
+            }
+        }
+    });
+}
+
+function thresholdForMode(mode) {
+    const config = MODE_CONFIG[mode];
+    const saved = Number(localStorage.getItem(config.thresholdStorage));
+    return Number.isFinite(saved) && saved > 0 ? saved : 6;
+}
+
+function setThresholdForMode(mode, value) {
+    localStorage.setItem(MODE_CONFIG[mode].thresholdStorage, String(value));
+}
+
+function sendMode() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "set_mode", mode: selectedMode }));
+    }
+}
+
+function setNumber(el, value, fallback = "0") {
+    el.textContent = value ?? fallback;
+}
+
+function setShare(fillEl, labelEl, value, total) {
+    const pct = total > 0 ? Math.round(value * 100 / total) : 0;
+    fillEl.style.width = `${pct}%`;
+    labelEl.textContent = `${pct}%`;
+}
+
+function personLabel(value) {
+    if (value === "dorm") return "往宿舍";
+    if (value === "starbucks") return "往星巴門";
+    if (value === "sports") return "往體育門";
+    if (value === "balanced") return "平均";
+    return "未判定";
+}
+
+function vehicleLabel(value) {
+    if (value === "car") return "汽車";
+    if (value === "motorcycle") return "機車";
+    if (value === "bus") return "巴士";
+    if (value === "truck") return "貨車";
+    if (value === "balanced") return "平均";
+    return "未判定";
+}
+
+function activeCategoryLabel(data) {
+    return selectedMode === "vehicles"
+        ? vehicleLabel(data.dominant_vehicle ?? data.dominant_destination)
+        : personLabel(data.dominant_destination);
+}
+
+function setPeopleFlowVisibility() {
+    if (!peopleFlowPanel) return;
+    peopleFlowPanel.classList.toggle("hidden-panel", selectedMode !== "people");
+}
+
+function flowNumber(value) {
+    const numeric = Number(value ?? 0);
+    return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function flashFlowRoute(entry) {
+    if (!entry?.card) return;
+    entry.card.classList.remove("flash");
+    void entry.card.offsetWidth;
+    entry.card.classList.add("flash");
+    window.setTimeout(() => entry.card.classList.remove("flash"), 520);
+}
+
+function updatePeopleFlowVisual(data) {
+    setPeopleFlowVisibility();
+    if (selectedMode !== "people") return;
+
+    const totals = data.destination_counts || {};
+    const intervals = data.interval_destination_counts || {};
+    const rows = [
+        ["dorm", flowNumber(totals.dorm ?? data.to_dorm_count), flowNumber(intervals.dorm)],
+        ["starbucks", flowNumber(totals.starbucks ?? data.to_starbucks_count), flowNumber(intervals.starbucks)],
+        ["sports", flowNumber(totals.sports ?? data.to_sports_count), flowNumber(intervals.sports)]
+    ];
+    const maxTotal = Math.max(1, ...rows.map(row => row[1]));
+    let pulseText = data.dominant_destination && data.dominant_destination !== "balanced"
+        ? `目前最多：${personLabel(data.dominant_destination)}`
+        : "等待方向判定";
+
+    rows.forEach(([key, total, interval]) => {
+        const entry = flowCards[key];
+        if (!entry?.card) return;
+
+        entry.total.textContent = total;
+        entry.interval.textContent = `本時段 +${interval}`;
+        entry.meter.style.width = `${Math.round(total * 100 / maxTotal)}%`;
+        entry.card.classList.toggle("dominant", data.dominant_destination === key);
+
+        const previous = flowLastTotals[key];
+        if (previous !== null && total > previous) {
+            flashFlowRoute(entry);
+            pulseText = `${personLabel(key)} +${total - previous}`;
+        }
+        flowLastTotals[key] = total;
+    });
+
+    if (flowPulseEl) flowPulseEl.textContent = pulseText;
+}
+
+function applyModeUI() {
+    const config = MODE_CONFIG[selectedMode];
+    analysisModeEl.textContent = config.title;
+    document.querySelectorAll(".mode-option").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.mode === selectedMode);
+    });
+    setPeopleFlowVisibility();
+
+    document.getElementById(labelIds.currentLabel).textContent = config.currentLabel;
+    document.getElementById(labelIds.peakLabel).textContent = config.peakLabel;
+    document.getElementById(labelIds.dominantLabel).textContent = config.dominantLabel;
+    document.getElementById(labelIds.totalLabel).textContent = config.totalLabel;
+    document.getElementById(labelIds.primaryLabel).textContent = config.primaryLabel;
+    document.getElementById(labelIds.secondaryLabel).textContent = config.secondaryLabel;
+    document.getElementById(labelIds.thirdLabel).textContent = config.thirdLabel;
+    document.getElementById(labelIds.fourthLabel).textContent = config.fourthLabel;
+    document.getElementById(labelIds.distributionTitle).textContent = config.distributionTitle;
+    document.getElementById(labelIds.chartTitle).textContent = config.chartTitle;
+    document.getElementById(labelIds.thresholdLabel).textContent = `警報閾值(${config.thresholdUnit})`;
+    document.getElementById(labelIds.barPrimaryLabel).textContent = config.primaryLabel;
+    document.getElementById(labelIds.barSecondaryLabel).textContent = config.secondaryLabel;
+    document.getElementById(labelIds.barThirdLabel).textContent = config.thirdLabel;
+    document.getElementById(labelIds.barFourthLabel).textContent = config.fourthLabel;
+
+    thresholdInput.value = thresholdForMode(selectedMode);
+    if (trafficChart) {
+        applyDatasetLabels(trafficChart);
+        refreshMainChart(true);
+    }
+    if (fullChart) {
+        applyDatasetLabels(fullChart);
+        refreshFullChart();
+    }
+    if (latestData && (!latestData.analysis_mode || latestData.analysis_mode === selectedMode)) {
+        renderStats(latestData);
+    }
+}
+
+function renderLoop(ts) {
+    rafId = requestAnimationFrame(renderLoop);
+    if (!pendingBlob) return;
+
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = URL.createObjectURL(pendingBlob);
+    pendingBlob = null;
+    img.src = currentBlobUrl;
+
+    frameCount++;
+    if (ts - lastFrameTime >= 1000) {
+        const fps = Math.round(frameCount * 1000 / (ts - lastFrameTime));
+        fpsEl.textContent = fps;
+        frameCount = 0;
+        lastFrameTime = ts;
+    }
+}
+
+function b64toBlob(b64, mimeType = "image/jpeg") {
+    const bin = atob(b64);
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mimeType });
+}
+
+function updateAlert(data) {
+    const config = MODE_CONFIG[selectedMode];
+    const current = Number(data.current_count ?? 0);
+    const threshold = thresholdForMode(selectedMode);
+    const active = current > threshold;
+    alertEl.classList.toggle("active", active);
+    alertEl.textContent = active
+        ? `${config.title}警報：目前 ${current} ${config.thresholdUnit}，超過閾值 ${threshold}`
+        : (data.alert || config.healthyText);
+}
+
+function historyValues(row) {
+    if (selectedMode === "vehicles") {
+        return [
+            row.interval_car ?? 0,
+            row.interval_motorcycle ?? 0,
+            row.interval_bus ?? 0,
+            row.current ?? 0
+        ];
+    }
+    return [
+        row.interval_to_dorm ?? 0,
+        row.interval_to_starbucks ?? 0,
+        row.interval_to_sports ?? 0,
+        row.current ?? 0
+    ];
+}
+
+function modeForHistory(mode = selectedMode) {
+    return MODE_CONFIG[mode] ? mode : "people";
+}
+
+function mergeHistoryRows(mode, rows) {
+    if (!Array.isArray(rows)) return;
+    mode = modeForHistory(mode);
+    const merged = new Map();
+    historyStore[mode].forEach(row => {
+        if (row && row.time) merged.set(String(row.time), row);
+    });
+    rows.forEach(row => {
+        if (row && row.time) merged.set(String(row.time), row);
+    });
+    historyStore[mode] = Array.from(merged.values())
+        .sort((a, b) => String(a.time).localeCompare(String(b.time)))
+        .slice(-MAX_CLIENT_HISTORY);
+}
+
+function rowsForRange(rows, range) {
+    if (!Array.isArray(rows)) return [];
+    if (range === "all") return rows;
+    const points = RANGE_POINTS[range] ?? RANGE_POINTS["8h"];
+    return rows.slice(-points);
+}
+
+function setRangeButtons(groupId, range) {
+    document.querySelectorAll(`#${groupId} .range-btn[data-range]`).forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.range === range);
+    });
+}
+
+function applyDatasetLabels(chart) {
+    if (!chart) return;
+    const config = MODE_CONFIG[selectedMode];
+    config.labels.forEach((label, index) => {
+        chart.data.datasets[index].label = label;
+        if (index < 3) chart.data.datasets[index].backgroundColor = config.colors[index];
+    });
+    chart.data.datasets[3].borderColor = config.colors[3];
+}
+
+function renderChartRows(chart, rows) {
+    if (!chart) return;
+    applyDatasetLabels(chart);
+    chart.data.labels = rows.map(h => h.time);
+    chart.data.datasets[0].data = rows.map(h => historyValues(h)[0]);
+    chart.data.datasets[1].data = rows.map(h => historyValues(h)[1]);
+    chart.data.datasets[2].data = rows.map(h => historyValues(h)[2]);
+    chart.data.datasets[3].data = rows.map(h => historyValues(h)[3]);
+    chart.update();
+}
+
+function refreshMainChart(force = false) {
+    const source = historyStore[selectedMode] || [];
+    const rows = rowsForRange(source, chartRange);
+    const signature = `${selectedMode}:${chartRange}:${JSON.stringify(rows)}`;
+    if (!force && signature === historySignature) return;
+    historySignature = signature;
+    currentHistory = rows;
+    renderChartRows(trafficChart, rows);
+    setRangeButtons("chart-range-group", chartRange);
+}
+
+function refreshFullChart() {
+    if (!fullChart) return;
+    const source = historyStore[selectedMode] || [];
+    const rows = rowsForRange(source, fullChartRange);
+    renderChartRows(fullChart, rows);
+    setRangeButtons("full-chart-range-group", fullChartRange);
+    if (fullChartTitle) {
+        const rangeText = fullChartRange === "all" ? "全部資料" : `最近 ${fullChartRange}`;
+        fullChartTitle.textContent = `${MODE_CONFIG[selectedMode].chartTitle} - ${rangeText}`;
+    }
+}
+
+function updateHistory(history) {
+    if (!trafficChart || !Array.isArray(history)) return;
+    mergeHistoryRows(selectedMode, history);
+    refreshMainChart();
+    refreshFullChart();
+}
+
+function clearHistoryChart() {
+    if (!trafficChart) return;
+    historySignature = "";
+    currentHistory = [];
+    renderChartRows(trafficChart, []);
+    refreshFullChart();
+}
+
+function renderStats(data) {
+    const config = MODE_CONFIG[selectedMode];
+    setNumber(currentEl, data.current_count);
+    setNumber(peakEl, data.peak_count);
+    setNumber(intervalEl, data.interval_count);
+    setNumber(totalEl, data.total_count);
+
+    if (selectedMode === "vehicles") {
+        const counts = data.vehicle_counts || {};
+        const total = Number(data.total_count ?? 0);
+        setNumber(primaryEl, counts.car ?? data.to_dorm_count);
+        setNumber(secondaryEl, counts.motorcycle ?? data.to_starbucks_count);
+        setNumber(thirdEl, counts.bus ?? data.to_sports_count);
+        setNumber(fourthEl, counts.truck ?? 0);
+        setShare(barPrimary, sharePrimary, Number(counts.car ?? 0), total);
+        setShare(barSecondary, shareSecondary, Number(counts.motorcycle ?? 0), total);
+        setShare(barThird, shareThird, Number(counts.bus ?? 0), total);
+        setShare(barFourth, shareFourth, Number(counts.truck ?? 0), total);
+    } else {
+        const destinationTotal = Number(data.assigned_destination_count ?? 0);
+        const pendingTotal = Number(data.pending_destination_count ?? 0);
+        const observedTotal = destinationTotal + pendingTotal;
+        setNumber(primaryEl, data.to_dorm_count);
+        setNumber(secondaryEl, data.to_starbucks_count);
+        setNumber(thirdEl, data.to_sports_count);
+        setNumber(fourthEl, pendingTotal);
+        setShare(barPrimary, sharePrimary, Number(data.to_dorm_count ?? 0), observedTotal);
+        setShare(barSecondary, shareSecondary, Number(data.to_starbucks_count ?? 0), observedTotal);
+        setShare(barThird, shareThird, Number(data.to_sports_count ?? 0), observedTotal);
+        setShare(barFourth, shareFourth, pendingTotal, observedTotal);
+    }
+    updatePeopleFlowVisual(data);
+
+    const category = activeCategoryLabel(data);
+    topCategoryEl.textContent = category;
+    dominantEl.textContent = `主要 ${category}`;
+    updateAlert(data);
+    updateHistory(data.history);
+
+    const lightMode = data.mode === "night" ? "night" : "day";
+    document.body.dataset.lightMode = lightMode;
+    lightEl.textContent = lightMode === "night" ? "夜間" : "日間";
+    brightnessEl.textContent = `亮度 ${data.brightness ?? "--"}`;
+    detailEl.textContent = `時間 ${data.time ?? "--"}`;
+
+    const lag = Date.now() - (data.ts_ms ?? Date.now());
+    lagEl.textContent = lag > 800 ? `延遲 ${lag}ms` : "即時";
+    lagEl.style.color = lag > 800 ? "var(--amber)" : "var(--green)";
+}
+
+function csvEscape(value) {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function exportToCSV() {
+    const rows = currentHistory.length > 0 ? currentHistory : latestData ? [{
+        time: latestData.time,
+        count: latestData.interval_count ?? 0,
+        total: latestData.total_count,
+        current: latestData.current_count,
+        interval_to_dorm: latestData.interval_destination_counts?.dorm ?? 0,
+        interval_to_starbucks: latestData.interval_destination_counts?.starbucks ?? 0,
+        interval_to_sports: latestData.interval_destination_counts?.sports ?? 0,
+        to_dorm: latestData.to_dorm_count,
+        to_starbucks: latestData.to_starbucks_count,
+        to_sports: latestData.to_sports_count,
+        interval_car: latestData.interval_vehicle_counts?.car ?? 0,
+        interval_motorcycle: latestData.interval_vehicle_counts?.motorcycle ?? 0,
+        interval_bus: latestData.interval_vehicle_counts?.bus ?? 0,
+        interval_truck: latestData.interval_vehicle_counts?.truck ?? 0,
+        car: latestData.vehicle_counts?.car ?? 0,
+        motorcycle: latestData.vehicle_counts?.motorcycle ?? 0,
+        bus: latestData.vehicle_counts?.bus ?? 0,
+        truck: latestData.vehicle_counts?.truck ?? 0,
+        dominant_destination: latestData.dominant_destination,
+        dominant_vehicle: latestData.dominant_vehicle,
+        peak: latestData.peak_count
+    }] : [];
+
+    if (rows.length === 0) {
+        alert("目前沒有可匯出的資料");
+        return;
+    }
+
+    const peakRow = rows.reduce((best, row) => {
+        const currentValue = Number(row.count ?? row.interval_count ?? 0);
+        const bestValue = Number(best.count ?? best.interval_count ?? 0);
+        return currentValue > bestValue ? row : best;
+    }, rows[0]);
+    const peakTime = peakRow?.peak_interval_time ?? peakRow?.time ?? "";
+    const peakCount = peakRow?.peak_interval_count ?? peakRow?.count ?? peakRow?.interval_count ?? 0;
+
+    const header = selectedMode === "vehicles"
+        ? ["時間", "時段新增", "時段汽車", "時段機車", "時段巴士", "時段貨車", "總車流", "目前車輛", "汽車", "機車", "巴士", "貨車", "主要車種", "尖峰"]
+        : ["時間", "往宿舍", "往星巴門", "往體育門", "當下時段經過人數", "最高人流時段", "最高時段人數"];
+    const lines = [header.map(csvEscape).join(",")];
+
+    rows.forEach(row => {
+        const values = selectedMode === "vehicles"
+            ? [
+                row.time,
+                row.count ?? 0,
+                row.interval_car ?? 0,
+                row.interval_motorcycle ?? 0,
+                row.interval_bus ?? 0,
+                row.interval_truck ?? 0,
+                row.total ?? "",
+                row.current ?? "",
+                row.car ?? "",
+                row.motorcycle ?? "",
+                row.bus ?? "",
+                row.truck ?? "",
+                vehicleLabel(row.dominant_vehicle),
+                row.peak ?? ""
+            ]
+            : [
+                row.time,
+                row.interval_to_dorm ?? "",
+                row.interval_to_starbucks ?? "",
+                row.interval_to_sports ?? "",
+                row.count ?? row.interval_count ?? 0,
+                row.peak_interval_time ?? peakTime,
+                row.peak_interval_count ?? peakCount
+            ];
+        lines.push(values.map(csvEscape).join(","));
+    });
+
+    const blob = new Blob(["\uFEFF" + lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const dateStr = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `${MODE_CONFIG[selectedMode].title}_統計_${dateStr}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function requestFullHistory() {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "get_history", mode: selectedMode }));
+    }
+}
+
+function openFullChart() {
+    chartModal.classList.add("open");
+    chartModal.setAttribute("aria-hidden", "false");
+    if (!fullChart) {
+        fullChart = createChart("fullChart");
+    }
+    refreshFullChart();
+    requestFullHistory();
+}
+
+function closeFullChart() {
+    chartModal.classList.remove("open");
+    chartModal.setAttribute("aria-hidden", "true");
+}
+
+function setMainChartRange(range) {
+    chartRange = RANGE_POINTS[range] || range === "all" ? range : "8h";
+    localStorage.setItem("chartRange", chartRange);
+    refreshMainChart(true);
+}
+
+function setFullChartRange(range) {
+    fullChartRange = RANGE_POINTS[range] || range === "all" ? range : "all";
+    localStorage.setItem("fullChartRange", fullChartRange);
+    refreshFullChart();
+}
+
+function connect() {
+    ws = new WebSocket(WS_URL);
+
+    ws.onopen = () => {
+        statusEl.textContent = "已連線，辨識中";
+        statusEl.style.color = "var(--green)";
+        overlay.classList.add("hidden");
+        sendMode();
+        lastFrameTime = performance.now();
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(renderLoop);
+    };
+
+    ws.onmessage = (event) => {
+        let data;
+        try {
+            data = JSON.parse(event.data);
+        } catch {
+            return;
+        }
+
+        if (data.type === "history") {
+            const mode = modeForHistory(data.analysis_mode);
+            mergeHistoryRows(mode, data.history);
+            if (mode === selectedMode) {
+                refreshMainChart(true);
+                refreshFullChart();
+            }
+            return;
+        }
+
+        if (data.analysis_mode && MODE_CONFIG[data.analysis_mode] && data.analysis_mode !== selectedMode) {
+            return;
+        }
+
+        latestData = data;
+        if (data.image) pendingBlob = b64toBlob(data.image);
+        renderStats(data);
+    };
+
+    ws.onclose = () => {
+        statusEl.textContent = "連線中斷，重新連線中";
+        statusEl.style.color = "var(--red)";
+        overlay.classList.remove("hidden");
+        overlay.textContent = "辨識後端未連線，正在重試...";
+        if (rafId) cancelAnimationFrame(rafId);
+        setTimeout(connect, 5000);
+    };
+
+    ws.onerror = (e) => console.error("WebSocket 錯誤:", e);
+}
+
+document.querySelectorAll(".mode-option").forEach(btn => {
+    btn.addEventListener("click", () => {
+        selectedMode = btn.dataset.mode;
+        localStorage.setItem("analysisMode", selectedMode);
+        historySignature = "";
+        latestData = null;
+        applyModeUI();
+        sendMode();
+        if (chartModal.classList.contains("open")) requestFullHistory();
+    });
+});
+
+document.querySelectorAll("#chart-range-group .range-btn[data-range]").forEach(btn => {
+    btn.addEventListener("click", () => setMainChartRange(btn.dataset.range));
+});
+
+document.querySelectorAll("#full-chart-range-group .range-btn[data-range]").forEach(btn => {
+    btn.addEventListener("click", () => setFullChartRange(btn.dataset.range));
+});
+
+thresholdInput.addEventListener("change", () => {
+    const next = Math.max(1, Number(thresholdInput.value) || 1);
+    thresholdInput.value = next;
+    setThresholdForMode(selectedMode, next);
+    if (latestData) updateAlert(latestData);
+});
+
+openFullChartBtn.addEventListener("click", openFullChart);
+closeFullChartBtn.addEventListener("click", closeFullChart);
+chartModal.addEventListener("click", (event) => {
+    if (event.target === chartModal) closeFullChart();
+});
+exportBtn.addEventListener("click", exportToCSV);
+trafficChart = createChart();
+applyModeUI();
+setRangeButtons("chart-range-group", chartRange);
+setRangeButtons("full-chart-range-group", fullChartRange);
+connect();
+</script>
+</body>
+</html>

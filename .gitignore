@@ -1,0 +1,39 @@
+# Python / runtime
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local caches and generated settings
+.tmp/
+.matplotlib/
+Ultralytics/
+.pytest_cache/
+
+# Local agent/workspace metadata
+.agents/
+.codex/
+
+# Media, model weights, and generated outputs
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.pt
+*.onnx
+*.engine
+replay_outputs/
+traffic_logs/
+crowd_test_sprites/
+crowd_real_sprites/
+
+# Local binaries and installers
+*.exe
+*.dll
+
+# Local/private configs
+configs/*.local.yaml
+configs/*_local.yaml
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

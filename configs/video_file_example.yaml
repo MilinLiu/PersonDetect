@@ -1,0 +1,16 @@
+camera:
+  rtsp_url: "C:\\path\\to\\sample-video.mp4"
+
+server:
+  host: 0.0.0.0
+  port: 8765
+
+video:
+  inference_fps: 10
+  output_width: 854
+  output_height: 480
+  jpeg_quality: 60
+
+capture:
+  rtsp_stale_frame_sec: 30.0
+  inference_no_frame_restart_sec: 30.0
