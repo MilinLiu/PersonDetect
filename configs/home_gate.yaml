@@ -28,6 +28,7 @@ model:
   weights: yolo26s.pt
   imgsz: 960
   conf: 0.32
+  tracker: bytetrack.yaml   # 改 botsort.yaml 可啟用內建外觀 ReID
 tracking:
   reid_thresh: 0.82
   reid_expire_sec: 60
@@ -37,6 +38,9 @@ tracking:
   track_id_ttl_sec: 36.0
   match_iou_thresh: 0.18
   match_distance_ratio: 0.16
+  reassoc_recent_sec: 1.5        # 短暫遺失內才允許純幾何接續（秒）
+  reassoc_appearance_min: 0.86   # 間隔較久時接續所需的外觀相似度
+  reassoc_very_near_ratio: 0.5   # 「非常接近」判定為 match_distance 的比例
   destination_min_travel_ratio: 0.09
   destination_min_track_sec: 0.8
   destination_missing_infer_sec: 2.0
@@ -53,6 +57,28 @@ counting:
   dorm_strict_exit_x: 0.38
   starbucks_visible_exit_x: 0.56
   sports_visible_exit_y: 0.58
+  double_zone_counting: false   # 關閉：改用移動方向判定，大幅減少「待判定」
+  double_zone_min_points: 3
+  double_zone_min_track_sec: 0.35
+  double_zone_exit_hits: 2
+  double_zone_entry_zones:
+  - - 0.3
+    - 0.5
+    - 0.7
+    - 0.98
+  double_zone_exit_zones:
+    dorm:
+      x_max: 0.28
+      y_min: 0.36
+      y_max: 0.98
+    starbucks:
+      x_min: 0.72
+      y_min: 0.36
+      y_max: 0.98
+    sports:
+      x_min: 0.18
+      x_max: 0.76
+      y_max: 0.46
   visible_exit_zones:
     dorm:
       x_max: 0.5

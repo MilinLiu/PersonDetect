@@ -119,6 +119,7 @@ INFERENCE_NO_FRAME_RESTART_SEC = float(_CAPTURE_CONFIG["inference_no_frame_resta
 CAPTURE_BUFFER_SIZE = int(_CAPTURE_CONFIG["capture_buffer_size"])
 BYTETRACK_CONF  = float(_MODEL_CONFIG["conf"])
 YOLO_IMGSZ      = int(_MODEL_CONFIG["imgsz"])
+TRACKER_CONFIG  = str(_MODEL_CONFIG.get("tracker", "bytetrack.yaml"))
 REID_THRESH     = float(_TRACKING_CONFIG["reid_thresh"])
 REID_EXPIRE_SEC = float(_TRACKING_CONFIG["reid_expire_sec"])
 TRACK_MAX_MISSING_SEC = float(_TRACKING_CONFIG["track_max_missing_sec"])
@@ -127,6 +128,11 @@ BOX_HOLD_MIN_HITS = int(_TRACKING_CONFIG.get("box_hold_min_hits", 2))
 TRACK_ID_TTL_SEC = float(_TRACKING_CONFIG["track_id_ttl_sec"])
 MATCH_IOU_THRESH = float(_TRACKING_CONFIG["match_iou_thresh"])
 MATCH_DISTANCE_RATIO = float(_TRACKING_CONFIG["match_distance_ratio"])
+# Re-association 防呆：短暫遮擋才允許純幾何接續；間隔較久必須外觀相似才併身份，
+# 避免「不同人走到同一位置」被吸收成同一個 ID 而漏記。
+REASSOC_RECENT_SEC = float(_TRACKING_CONFIG.get("reassoc_recent_sec", 1.5))
+REASSOC_APPEARANCE_MIN = float(_TRACKING_CONFIG.get("reassoc_appearance_min", REID_THRESH))
+REASSOC_VERY_NEAR_RATIO = float(_TRACKING_CONFIG.get("reassoc_very_near_ratio", 0.5))
 ROAD_ROI_NORM = _points(_ZONES_CONFIG["road_roi"])
 ROAD_ROI_MARGIN_RATIO = float(_ZONES_CONFIG["road_roi_margin_ratio"])
 FORWARD_WALKWAY_ZONES_NORM = _points(_ZONES_CONFIG["forward_walkway_zones"])
@@ -149,6 +155,12 @@ DORM_STRICT_EXIT_X = float(_COUNTING_CONFIG["dorm_strict_exit_x"])
 STARBUCKS_VISIBLE_EXIT_X = float(_COUNTING_CONFIG["starbucks_visible_exit_x"])
 SPORTS_VISIBLE_EXIT_Y = float(_COUNTING_CONFIG["sports_visible_exit_y"])
 VISIBLE_EXIT_ZONES = dict(_COUNTING_CONFIG.get("visible_exit_zones") or {})
+DOUBLE_ZONE_COUNTING = bool(_COUNTING_CONFIG.get("double_zone_counting", True))
+DOUBLE_ZONE_ENTRY_ZONES = list(_COUNTING_CONFIG.get("double_zone_entry_zones") or [])
+DOUBLE_ZONE_EXIT_ZONES = dict(_COUNTING_CONFIG.get("double_zone_exit_zones") or {})
+DOUBLE_ZONE_EXIT_HITS = int(_COUNTING_CONFIG.get("double_zone_exit_hits", 2))
+DOUBLE_ZONE_MIN_POINTS = int(_COUNTING_CONFIG.get("double_zone_min_points", 3))
+DOUBLE_ZONE_MIN_TRACK_SEC = float(_COUNTING_CONFIG.get("double_zone_min_track_sec", 0.35))
 SHOW_ROAD_ROI = bool(_DISPLAY_CONFIG["show_road_roi"])
 SHOW_DIRECTION_GUIDES = bool(_DISPLAY_CONFIG["show_direction_guides"])
 SHOW_COUNT_DEBUG = bool(_DISPLAY_CONFIG.get("show_count_debug", False))
@@ -343,10 +355,19 @@ class InferenceThread(threading.Thread):
                 self._people.pop(person_id, None)
 
     def _match_existing_person(self, box, center, feature, frame_shape, now, visible_ids):
+        """把一個新的偵測接回既有身份。
+
+        規則式、分時間窗，避免舊版「距離夠近就併」造成不同人被吸收成同一 ID：
+        - 短暫遺失（age <= REASSOC_RECENT_SEC）：視為遮擋/閃爍，IoU 有重疊或
+          質心非常接近即可接續（維持同一 ID，避免同一人被重複計數）。
+        - 較久的間隔：必須「外觀相似」且「空間合理」才可接續，單純位置接近不算，
+          以免後面走到同位置的另一個人繼承前一個人的 ID 而漏記人數。
+        """
         h, w = frame_shape[:2]
         max_distance = ((h * h + w * w) ** 0.5) * MATCH_DISTANCE_RATIO
+        very_near_distance = max_distance * REASSOC_VERY_NEAR_RATIO
         best_person_id = None
-        best_score = 0.0
+        best_key = None
 
         for person_id, state in self._people.items():
             if person_id in visible_ids:
@@ -359,22 +380,27 @@ class InferenceThread(threading.Thread):
             iou = box_iou(box, state["last_box"])
             distance = float(np.linalg.norm(np.array(center) - np.array(state["last_center"])))
             similarity = self.cache.similarity(feature, state.get("feature"))
+            near = distance <= max_distance
 
-            score = 0.0
-            if iou >= MATCH_IOU_THRESH:
-                score += 3.0 + iou
-            if distance <= max_distance:
-                score += 2.0 + (1.0 - distance / max_distance)
-            if similarity >= REID_THRESH:
-                score += 2.0 + similarity
-            if age <= 2.0 and distance <= max_distance * 1.4:
-                score += 1.0
+            matched = False
+            if age <= REASSOC_RECENT_SEC:
+                # 剛剛才遺失：幾何連續性足以判定是同一人。
+                if iou >= MATCH_IOU_THRESH or distance <= very_near_distance:
+                    matched = True
+            if not matched and near and similarity >= REASSOC_APPEARANCE_MIN:
+                # 間隔較久：外觀一致 + 空間合理才接續。
+                matched = True
 
-            if score > best_score:
-                best_score = score
+            if not matched:
+                continue
+
+            # 排序偏好：先看 IoU，再看外觀相似度，最後看距離（越近越好）。
+            key = (round(iou, 4), round(similarity, 4), -distance)
+            if best_key is None or key > best_key:
+                best_key = key
                 best_person_id = person_id
 
-        return best_person_id if best_score >= 2.0 else None
+        return best_person_id
 
     def _exit_for_transition(self, last_inside_norm, current_norm):
         for destination, segment in EXIT_LINES_NORM.items():
@@ -416,35 +442,39 @@ class InferenceThread(threading.Thread):
         if in_forward_walkway and not in_road:
             self._mark_roi_person(state, now)
             state["path"].append((now, foot, (nx, ny), in_road))
+            self._remember_double_zone_entry(state, (nx, ny), now)
             if state.get("was_inside_roi"):
                 exit_destination = self._exit_for_transition(state.get("last_inside_norm"), (nx, ny))
                 if exit_destination is not None:
                     return exit_destination
-            return self._classify_visible_exit(state)
+            return self._classify_zone_exit(state, (nx, ny), now)
 
         if state.get("was_inside_roi") and not in_road:
             state["path"].append((now, foot, (nx, ny), in_road))
+            self._remember_double_zone_entry(state, (nx, ny), now)
             destination = self._exit_for_transition(state.get("last_inside_norm"), (nx, ny))
             if destination is not None:
                 return destination
-            return self._classify_visible_exit(state)
+            return self._classify_zone_exit(state, (nx, ny), now)
 
         if not in_road and not in_forward_walkway:
             if in_visible_exit_zone:
                 self._mark_roi_person(state, now)
                 state["path"].append((now, foot, (nx, ny), in_road))
-                return self._classify_visible_exit(state)
+                self._remember_double_zone_entry(state, (nx, ny), now)
+                return self._classify_zone_exit(state, (nx, ny), now)
             return None
 
         state["path"].append((now, foot, (nx, ny), in_road))
+        self._remember_double_zone_entry(state, (nx, ny), now)
         if in_road:
             self._mark_roi_person(state, now)
             state["was_inside_roi"] = True
             state["last_inside_norm"] = road_norm
             state["last_inside_ts"] = now
         elif in_forward_walkway:
-            return self._classify_visible_exit(state)
-        return self._classify_visible_exit(state)
+            return self._classify_zone_exit(state, (nx, ny), now)
+        return self._classify_zone_exit(state, (nx, ny), now)
 
     def _mark_roi_person(self, state, now):
         if state.get("roi_counted"):
@@ -467,6 +497,81 @@ class InferenceThread(threading.Thread):
             "destination": destination,
             "total": self.roi_person_count,
         }
+
+    @staticmethod
+    def _point_matches_rect(point_norm, rect) -> bool:
+        if isinstance(rect, dict):
+            return InferenceThread._point_matches_exit_rule(point_norm, rect)
+
+        if not isinstance(rect, (list, tuple)) or len(rect) != 4:
+            return False
+
+        x, y = point_norm
+        x1, y1, x2, y2 = (float(value) for value in rect)
+        return min(x1, x2) <= x <= max(x1, x2) and min(y1, y2) <= y <= max(y1, y2)
+
+    def _point_in_double_zone_entry(self, point_norm) -> bool:
+        return any(self._point_matches_rect(point_norm, zone) for zone in DOUBLE_ZONE_ENTRY_ZONES)
+
+    def _double_zone_exit_destination(self, point_norm):
+        for destination, rule in DOUBLE_ZONE_EXIT_ZONES.items():
+            if self._point_matches_rect(point_norm, rule):
+                return destination
+        return None
+
+    def _remember_double_zone_entry(self, state, point_norm, now: float):
+        if not DOUBLE_ZONE_COUNTING or not DOUBLE_ZONE_ENTRY_ZONES:
+            return
+        if not self._point_in_double_zone_entry(point_norm):
+            return
+
+        state["double_zone_entry_seen"] = True
+        if state.get("double_zone_entry_ts") is None:
+            state["double_zone_entry_ts"] = now
+        state["double_zone_entry_last_ts"] = now
+
+    def _classify_double_zone_exit(self, state, point_norm, now: float):
+        if (
+            not DOUBLE_ZONE_COUNTING
+            or not DOUBLE_ZONE_EXIT_ZONES
+            or state.get("destination_counted")
+            or not state.get("roi_counted")
+            or not state.get("double_zone_entry_seen")
+        ):
+            return None
+
+        points = state.get("path", ())
+        if len(points) < DOUBLE_ZONE_MIN_POINTS:
+            return None
+
+        entry_ts = state.get("double_zone_entry_ts") or state.get("roi_entered_ts") or points[0][0]
+        if now - float(entry_ts) < DOUBLE_ZONE_MIN_TRACK_SEC:
+            return None
+
+        destination = self._double_zone_exit_destination(point_norm)
+        if destination is None:
+            state["double_zone_exit_candidate"] = None
+            state["double_zone_exit_hits"] = 0
+            return None
+
+        if state.get("double_zone_exit_candidate") != destination:
+            state["double_zone_exit_candidate"] = destination
+            state["double_zone_exit_hits"] = 1
+        else:
+            state["double_zone_exit_hits"] = int(state.get("double_zone_exit_hits", 0)) + 1
+
+        if int(state.get("double_zone_exit_hits", 0)) < DOUBLE_ZONE_EXIT_HITS:
+            return None
+        return destination
+
+    def _classify_zone_exit(self, state, point_norm, now: float):
+        destination = self._classify_double_zone_exit(state, point_norm, now)
+        if destination is not None:
+            return destination
+
+        if DOUBLE_ZONE_COUNTING and DOUBLE_ZONE_ENTRY_ZONES and DOUBLE_ZONE_EXIT_ZONES:
+            return None
+        return self._classify_visible_exit(state)
 
     @staticmethod
     def _point_matches_exit_rule(point_norm, rule: dict) -> bool:
@@ -719,6 +824,12 @@ class InferenceThread(threading.Thread):
             "visible_exit_min_track_sec": VISIBLE_EXIT_MIN_TRACK_SEC,
             "visible_exit_min_travel_ratio": VISIBLE_EXIT_MIN_TRAVEL_RATIO,
             "visible_exit_min_delta": VISIBLE_EXIT_MIN_DELTA,
+            "double_zone_counting": DOUBLE_ZONE_COUNTING,
+            "double_zone_entry_zones": DOUBLE_ZONE_ENTRY_ZONES,
+            "double_zone_exit_zones": DOUBLE_ZONE_EXIT_ZONES,
+            "double_zone_min_points": DOUBLE_ZONE_MIN_POINTS,
+            "double_zone_min_track_sec": DOUBLE_ZONE_MIN_TRACK_SEC,
+            "double_zone_exit_hits": DOUBLE_ZONE_EXIT_HITS,
         }
 
     def interval_destination_counts(self):
@@ -764,6 +875,11 @@ class InferenceThread(threading.Thread):
                 "was_inside_roi": False,
                 "last_inside_norm": None,
                 "last_inside_ts": None,
+                "double_zone_entry_seen": False,
+                "double_zone_entry_ts": None,
+                "double_zone_entry_last_ts": None,
+                "double_zone_exit_candidate": None,
+                "double_zone_exit_hits": 0,
             }
 
         if raw_id is not None:
@@ -878,7 +994,7 @@ class InferenceThread(threading.Thread):
                 frame,
                 persist=not reset_tracker,
                 classes=track_classes,
-                tracker="bytetrack.yaml",
+                tracker=TRACKER_CONFIG,
                 verbose=False,
                 imgsz=YOLO_IMGSZ,
                 conf=BYTETRACK_CONF,

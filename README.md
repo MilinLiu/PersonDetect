@@ -1,27 +1,29 @@
 # 智慧路燈人流監控專題 README
 
+> ⚠️ **給接手 session 的說明**：即時工作指引以專案根目錄的 `CLAUDE.md` 為準（正確路徑、啟動方式、設定檔優先序、計數不變量、驗證約定）。本文件是完整背景說明，內容較多、部分可能較舊；兩者衝突時**以 `CLAUDE.md` 為準**。
+
 這份 README 是給之後在本專案開新聊天、接手修改程式的人看的。請先讀完這份，再動 `persondetectandfield.py` 或 `網頁監控.html`。
 
 ## 工作範圍
 
-- 專案資料夾：`D:\COEDX`
-- 使用者明確要求：只允許存取與修改 `D:\COEDX` 內的專案資料。
-- 主要程式：`D:\COEDX\persondetectandfield.py`
-- 前端頁面：`D:\COEDX\網頁監控.html`
-- 主要 YOLO 模型：`D:\COEDX\yolo26l.pt`
-- 目前場景設定檔：`D:\COEDX\configs\home_gate.yaml`
-- 設定讀取程式：`D:\COEDX\core\config.py`
-- 攝影機讀取模組：`D:\COEDX\core\camera_source.py`
-- 影像工具模組：`D:\COEDX\core\image_utils.py`
-- ReID 外觀工具：`D:\COEDX\core\appearance.py`
-- 模型工具模組：`D:\COEDX\core\model_utils.py`
-- 啟動輔助模組：`D:\COEDX\core\runtime.py`
-- WebSocket 模組：`D:\COEDX\server\websocket_server.py`
-- CSV/歷史紀錄模組：`D:\COEDX\server\traffic_logger.py`
-- 幾何/ROI 輔助：`D:\COEDX\analyzers\geometry.py`
-- 車流狀態統計：`D:\COEDX\analyzers\vehicle_flow.py`
-- 畫框/疊圖工具：`D:\COEDX\analyzers\visualization.py`
-- Python venv：`D:\COEDX\.venv`
+- 專案資料夾：`專案根目錄`
+- 使用者明確要求：只允許存取與修改 `專案根目錄` 內的專案資料。
+- 主要程式：`persondetectandfield.py`
+- 前端頁面：`網頁監控.html`
+- 主要 YOLO 模型：`yolo26s.pt`
+- 目前場景設定檔：`configs/home_gate.yaml`
+- 設定讀取程式：`core/config.py`
+- 攝影機讀取模組：`core/camera_source.py`
+- 影像工具模組：`core/image_utils.py`
+- ReID 外觀工具：`core/appearance.py`
+- 模型工具模組：`core/model_utils.py`
+- 啟動輔助模組：`core/runtime.py`
+- WebSocket 模組：`server/websocket_server.py`
+- CSV/歷史紀錄模組：`server/traffic_logger.py`
+- 幾何/ROI 輔助：`analyzers/geometry.py`
+- 車流狀態統計：`analyzers/vehicle_flow.py`
+- 畫框/疊圖工具：`analyzers/visualization.py`
+- Python venv：`.venv`
 
 ## 專題目標
 
@@ -38,22 +40,22 @@
 
 ## 執行方式
 
-第一次安裝或更新套件：
+第一次安裝或更新套件（CUDA 版 PyTorch 另見 `requirements-cuda.txt`）：
 
 ```bat
-D:\COEDX\install_deps.bat
+.venv/Scripts/python.exe -m pip install -r requirements.txt
 ```
 
 啟動後端：
 
 ```bat
-D:\COEDX\run_monitor.bat
+run_monitor.bat
 ```
 
 前端直接開：
 
 ```text
-D:\COEDX\網頁監控.html
+網頁監控.html
 ```
 
 前端會連到：
@@ -73,7 +75,7 @@ ws://localhost:8765
 目前第一階段已把「容易因攝影機或場地改變」的參數搬到：
 
 ```text
-D:\COEDX\configs\home_gate.yaml
+configs/home_gate.yaml
 ```
 
 包含：
@@ -84,34 +86,34 @@ D:\COEDX\configs\home_gate.yaml
 - 道路 ROI、人行道補充區、出口線
 - 日夜模式、警報門檻、CSV/歷史資料長度
 
-`persondetectandfield.py` 仍保留原本的變數名稱與主流程，只是改成透過 `core\config.py` 讀取設定。若 `PyYAML` 尚未安裝、設定檔不存在或格式錯誤，程式會退回內建預設值，避免影響既有啟動流程。
+`persondetectandfield.py` 仍保留原本的變數名稱與主流程，只是改成透過 `core/config.py` 讀取設定。若 `PyYAML` 尚未安裝、設定檔不存在或格式錯誤，程式會退回內建預設值，避免影響既有啟動流程。
 
 目前也已先把低風險工具與外圍流程拆出去：
 
-- `core\camera_source.py`：RTSP 攝影機連線、讀幀、重連
-- `core\image_utils.py`：夜間增強、亮度估計
-- `core\appearance.py`：輕量 ReID 外觀特徵
-- `core\model_utils.py`：YOLO warm-up
-- `core\runtime.py`：啟動前檢查、攝影機 IP 掃描、關閉清理
-- `server\websocket_server.py`：WebSocket 影像與控制訊息傳輸
-- `server\traffic_logger.py`：CSV header、事件 append、定時人流/車流紀錄
-- `analyzers\geometry.py`：bbox、ROI、出口線交會、距離與路徑平均等純計算
-- `analyzers\vehicle_flow.py`：車流 track 狀態、累積數、時段數、尖峰與平均
-- `analyzers\visualization.py`：人流/車流畫框、路徑、ROI 與出口線疊圖
+- `core/camera_source.py`：RTSP 攝影機連線、讀幀、重連
+- `core/image_utils.py`：夜間增強、亮度估計
+- `core/appearance.py`：輕量 ReID 外觀特徵
+- `core/model_utils.py`：YOLO warm-up
+- `core/runtime.py`：啟動前檢查、攝影機 IP 掃描、關閉清理
+- `server/websocket_server.py`：WebSocket 影像與控制訊息傳輸
+- `server/traffic_logger.py`：CSV header、事件 append、定時人流/車流紀錄
+- `analyzers/geometry.py`：bbox、ROI、出口線交會、距離與路徑平均等純計算
+- `analyzers/vehicle_flow.py`：車流 track 狀態、累積數、時段數、尖峰與平均
+- `analyzers/visualization.py`：人流/車流畫框、路徑、ROI 與出口線疊圖
 
 目前 `persondetectandfield.py` 主要還保留設定常數、`InferenceThread` 與 `main()` 組裝流程。`InferenceThread` 已先把車流狀態、幾何工具、畫框疊圖抽出去；人流目的地判定仍保留在主檔，因為它直接影響總人流、待判定與三方向統計。之後若要再拆，建議先用固定影片回放測試，避免改壞計數邏輯。
 
 若要測另一個場景，可以複製：
 
 ```text
-D:\COEDX\configs\school_gate_example.yaml
+configs/school_gate_example.yaml
 ```
 
 再透過環境變數指定設定檔：
 
 ```powershell
-$env:MONITOR_CONFIG = "configs\school_gate_example.yaml"
-D:\COEDX\.venv\Scripts\python.exe D:\COEDX\persondetectandfield.py
+$env:MONITOR_CONFIG = "configs/school_gate_example.yaml"
+.venv/Scripts/python.exe persondetectandfield.py
 ```
 
 ## 目前環境與 GPU
@@ -310,7 +312,7 @@ NIGHT_MODE_HYSTERESIS = 10
 
 ## 前端功能
 
-目前前端是 `D:\COEDX\網頁監控.html`，主要功能：
+目前前端是 `網頁監控.html`，主要功能：
 
 - 即時影像顯示
 - 連線狀態
@@ -360,8 +362,8 @@ ALERT_THRESHOLD = 6
 後端會自動寫入：
 
 ```text
-D:\COEDX\traffic_logs\traffic_summary.csv
-D:\COEDX\traffic_logs\traffic_events.csv
+traffic_logs/traffic_summary.csv
+traffic_logs/traffic_events.csv
 ```
 
 時段紀錄間隔：
@@ -386,20 +388,18 @@ HISTORY_MAX_POINTS = 96
 可用語法檢查：
 
 ```bat
-D:\COEDX\.venv\Scripts\python.exe -m py_compile D:\COEDX\persondetectandfield.py D:\COEDX\mock_stream_server.py
+.venv/Scripts/python.exe -m py_compile persondetectandfield.py mock_stream_server.py
 ```
 
 測 CUDA：
 
 ```bat
-D:\COEDX\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
+.venv/Scripts/python.exe -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'cpu')"
 ```
 
 輔助檔案：
 
 - `mock_stream_server.py`：模擬 WebSocket 資料，可用來測前端。
-- `preview_frontend.js`：用假 WebSocket 資料預覽前端畫面。
-- `frontend_preview.png`：之前的前端預覽截圖。
 
 ## 已討論且已做進去的功能
 
@@ -427,7 +427,7 @@ D:\COEDX\.venv\Scripts\python.exe -c "import torch; print(torch.__version__); pr
 使用者提供影片：
 
 ```text
-C:\Users\milin\Videos\螢幕錄製內容\螢幕錄製 2026-06-03 185040.mp4
+C:/Users/milin/Videos/螢幕錄製內容/螢幕錄製 2026-06-03 185040.mp4
 ```
 
 現象：
@@ -444,7 +444,7 @@ C:\Users\milin\Videos\螢幕錄製內容\螢幕錄製 2026-06-03 185040.mp4
 - 後續又改成三方向共用的 `visible_exit_zones`：`dorm`、`starbucks`、`sports` 都可設定自己的出口觸發區與移動方向條件，避免只修單邊。
 - 觸發計數的行人框會短暫高亮並顯示 `COUNT +1 dorm/starbucks/sports`。
 
-相關設定在 `configs\home_gate.yaml`：
+相關設定在 `configs/home_gate.yaml`：
 
 ```yaml
 counting:

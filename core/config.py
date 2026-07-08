@@ -49,6 +49,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "weights": "yolo26s.pt",
         "imgsz": 960,
         "conf": 0.32,
+        # 追蹤器設定檔；改成 "botsort.yaml" 可啟用內建外觀 ReID（較不會 ID 跳號）。
+        "tracker": "bytetrack.yaml",
     },
     "tracking": {
         "reid_thresh": 0.82,
@@ -59,6 +61,10 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "track_id_ttl_sec": 30.0,
         "match_iou_thresh": 0.18,
         "match_distance_ratio": 0.16,
+        # 身份接續防呆：短暫遺失才可純幾何接續；較久間隔須外觀相似。
+        "reassoc_recent_sec": 1.5,
+        "reassoc_appearance_min": 0.86,
+        "reassoc_very_near_ratio": 0.5,
         "destination_min_travel_ratio": 0.09,
         "destination_min_track_sec": 0.8,
         "destination_missing_infer_sec": 2.0,
@@ -76,6 +82,30 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "dorm_strict_exit_x": 0.38,
         "starbucks_visible_exit_x": 0.56,
         "sports_visible_exit_y": 0.58,
+        "double_zone_counting": True,
+        "double_zone_min_points": 3,
+        "double_zone_min_track_sec": 0.35,
+        "double_zone_exit_hits": 2,
+        "double_zone_entry_zones": [
+            [0.30, 0.50, 0.70, 0.98],
+        ],
+        "double_zone_exit_zones": {
+            "dorm": {
+                "x_max": 0.28,
+                "y_min": 0.36,
+                "y_max": 0.98,
+            },
+            "starbucks": {
+                "x_min": 0.72,
+                "y_min": 0.36,
+                "y_max": 0.98,
+            },
+            "sports": {
+                "x_min": 0.18,
+                "x_max": 0.76,
+                "y_max": 0.46,
+            },
+        },
         "visible_exit_zones": {
             "dorm": {
                 "x_max": 0.50,
